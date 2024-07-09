@@ -38,7 +38,21 @@ class Ship2Bill {
 		//unset les id expédition qui sont déjà liés à une facture
 		$this->_clearTExpedition($db, $TExpedition);
 
-		// Pour chaque id client
+                //TODO ne permet de gérer que le paramètre getDolGlobalString('SHIP2BILL_MULTIPLE_EXPED_ON_BILL_THIRDPARTY_CARD') false 
+                if (isModEnabled("multicurrency") && !getDolGlobalString('SHIP2BILL_MULTIPLE_EXPED_ON_BILL_THIRDPARTY_CARD') && !getDolGlobalString('SHIP2BILL_INVOICE_PER_SHIPMENT')) {
+                    $ret = $this->check_currency_orders($TExpedition);
+                    if ($ret < 0) {
+                        setEventMessage('Les commandes des expéditions sélectionnées n\'ont pas toutes la même devise', 'errors');
+                        return -1;
+                    }
+                } else {
+                    if (isModEnabled("multicurrency")) {
+                        setEventMessage('Le module ne prend pas en charge cette combinaison de paramètres', 'errors');
+                        return -2;
+                    }
+                }
+        
+                // Pour chaque id client
 		foreach($TExpedition as $id_client => $Tid_exp)
 		{
 			if (empty($Tid_exp)) continue;
@@ -109,7 +123,14 @@ class Ship2Bill {
 				// Ajout pour éviter déclenchement d'autres modules, par exemple ecotaxdee
 				$f->context = array('origin'=>'shipping', 'origin_id'=>$id_exp);
 
-				// Ajout du titre
+                                if (isModEnabled("multicurrency")) {
+                                    $comm = new Commande($db);
+                                    $ret = $comm->fetch($fk_commande);
+                                    if ($ret > 0) {
+                                        $f->setMulticurrencyCode($comm->multicurrency_code);
+                                    }
+                                }
+                                // Ajout du titre
 				$this->facture_add_title($f, $exp, $sub);
 				// Ajout des lignes
 				$this->facture_add_line($f, $exp);
@@ -303,6 +324,39 @@ class Ship2Bill {
 		return $f;
 	}
 
+        function check_currency_orders($TExpedition) {
+            global $user, $db, $conf;
+
+            foreach ($TExpedition as $id_client => $Tid_exp) {
+                $currency_code = '';
+                foreach ($Tid_exp as $idExpe => $val) {
+                    $exp = new Expedition($db);
+                    $ret = $exp->fetch($idExpe);
+                    if ($ret > 0) {
+                        $exp->fetchObjectLinked(0, 'commande', $exp->id, 'shipping');
+                        $fk_commande = reset($exp->linkedObjectsIds['commande']);
+                        $comm = new Commande($db);
+                        $ret = $comm->fetch($fk_commande);
+                        if ($ret > 0) {
+                            if (empty($currency_code)) {
+                                $currency_code = $comm->multicurrency_code;
+                            } else {
+                                if ($comm->multicurrency_code != $currency_code) {
+                                    return -1; //Au moins une des expéditions n'a pas la même devise
+                                }
+                            }
+                        } else {
+                            return -101;
+                        }
+                    } else {
+                        return -100;
+                    }
+                }
+            }
+
+            return 0;
+        }
+    
 	function getModeReglementCode(&$db, $mode_reglement_id)
 	{
 		if ($mode_reglement_id <= 0) return '';
@@ -323,18 +377,26 @@ class Ship2Bill {
 			if(getDolGlobalString('SHIPMENT_GETS_ALL_ORDER_PRODUCTS')  && $l->qty == 0) continue;
 			// Sélectionne uniquement les produits
 			if (($l->fk_product_type == 0 && !empty($l->fk_product)) || getDolGlobalString('STOCK_SUPPORTS_SERVICES')) {
-				$orderline = new OrderLine($db);
-				$orderline->fetch($l->fk_origin_line);
-				$orderline->fetch_optionals();
+                            $orderline = new OrderLine($db);
+                            $orderline->fetch($l->fk_origin_line);
+                            $orderline->fetch_optionals();
 
-				// Si ligne du module sous-total et que sa description est vide alors il faut attribuer le label (le label ne semble pas être utiliser pour l'affichage car deprécié)
-				if (!empty($conf->subtotal->enabled) && $orderline->special_code == TSubtotal::$module_number && empty($l->description)) $l->description = $l->label;
+                            // Si ligne du module sous-total et que sa description est vide alors il faut attribuer le label (le label ne semble pas être utiliser pour l'affichage car deprécié)
+                            if (!empty($conf->subtotal->enabled) && $orderline->special_code == TSubtotal::$module_number && empty($l->description)) $l->description = $l->label;
 
-				if((float)DOL_VERSION <= 3.4)
-					$f->addline($f->id, $l->description, $l->subprice, $l->qty, $l->tva_tx,$l->localtax1tx,$l->localtax2tx,$l->fk_product, $l->remise_percent,'','',0,0,'','HT',0,0,-1,0,'shipping',$l->line_id,0,$orderline->fk_fournprice,$orderline->pa_ht,$orderline->label);
-				else
-					$f->addline($l->description, $l->subprice, $l->qty, $l->tva_tx,$l->localtax1tx,$l->localtax2tx,$l->fk_product, $l->remise_percent,'','',0,0,'','HT',0,$orderline->product_type,-1,$orderline->special_code,'shipping',$l->line_id,0,$orderline->fk_fournprice,$orderline->pa_ht,$orderline->label, $orderline->array_options);
-			}
+                            if ((float) DOL_VERSION <= 3.4) {
+                                $f->addline($f->id, $l->description, $l->subprice, $l->qty, $l->tva_tx, $l->localtax1tx, $l->localtax2tx, $l->fk_product, $l->remise_percent, '', '', 0, 0, '', 'HT', 0, 0, -1, 0, 'shipping', $l->line_id, 0, $orderline->fk_fournprice, $orderline->pa_ht, $orderline->label);
+                            } else {
+                                //TODO Alex
+                                if (!isModEnabled("multicurrency")) {
+                                    $f->addline($l->description, $l->subprice, $l->qty, $l->tva_tx, $l->localtax1tx, $l->localtax2tx, $l->fk_product, $l->remise_percent, '', '', 0, 0, '', 'HT', 0, $orderline->product_type, -1, $orderline->special_code, 'shipping', $l->line_id, 0, $orderline->fk_fournprice, $orderline->pa_ht, $orderline->label, $orderline->array_options);
+                                } else {
+                                    //On facture le montant en devise de la commande et on prend le taux du jour pour la facturation
+                                    $f->addline($l->description,''/* $l->subprice*/, $l->qty, $l->tva_tx, $l->localtax1tx, $l->localtax2tx, $l->fk_product, $l->remise_percent, '', '', 0, 0, '', 'HT', 0, $orderline->product_type, -1, $orderline->special_code, 'shipping', $l->line_id, 0, $orderline->fk_fournprice, $orderline->pa_ht, $orderline->label, $orderline->array_options, 100, 0, $orderline->fk_unit, $orderline->multicurrency_subprice);
+                                }
+                            }
+                
+                        }
 		}
 
 		//Récupération des services de la commande si SHIP2BILL_GET_SERVICES_FROM_ORDER
