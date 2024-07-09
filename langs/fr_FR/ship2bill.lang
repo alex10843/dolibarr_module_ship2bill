@@ -42,3 +42,6 @@ OneBillByShipment=Une facture par expédition
 OneBillByOrder=Une facture par commande
 BillingManagement=Gestion de la facturation
 SHIP2BILL_DISPLAY_SHIPMENT_REAL_DATE=Afficher la date réel de l'expédition plutôt que la date de livraison dans les titres
+
+SHIP2BILL_ERROR_ORDER_NOT_SAME_MULTICURRENCY=Les commandes des expéditions sélectionnées n'ont pas toutes la même devise
+SHIP2BILL_ERROR_MULTICURRENCY_NOT_CORRECT_PARAMETERS=Le module ne prend pas en charge cette combinaison de paramètres

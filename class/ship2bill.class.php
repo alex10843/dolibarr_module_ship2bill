@@ -42,12 +42,12 @@ class Ship2Bill {
                 if (isModEnabled("multicurrency") && !getDolGlobalString('SHIP2BILL_MULTIPLE_EXPED_ON_BILL_THIRDPARTY_CARD') && !getDolGlobalString('SHIP2BILL_INVOICE_PER_SHIPMENT')) {
                     $ret = $this->check_currency_orders($TExpedition);
                     if ($ret < 0) {
-                        setEventMessage('Les commandes des expéditions sélectionnées n\'ont pas toutes la même devise', 'errors');
+                        setEventMessage($langs->trans('SHIP2BILL_ERROR_ORDER_NOT_SAME_MULTICURRENCY'), 'errors');
                         return -1;
                     }
                 } else {
                     if (isModEnabled("multicurrency")) {
-                        setEventMessage('Le module ne prend pas en charge cette combinaison de paramètres', 'errors');
+                        setEventMessage($langs->trans('SHIP2BILL_ERROR_MULTICURRENCY_NOT_CORRECT_PARAMETERS'), 'errors');
                         return -2;
                     }
                 }
